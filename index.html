@@ -41,6 +41,29 @@
   @keyframes slideUp { from { transform: translateY(40px); opacity:0 } to { transform:none; opacity:1 } }
   .sheet { animation: slideUp .22s ease-out; }
   .press:active { transform: scale(.97); opacity:.85; }
+
+  /* ---- Report PDF (visibile solo in stampa) ---- */
+  #print-root { display:none; }
+  .rp { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:#111; background:#fff; font-size:10.5pt; line-height:1.35; }
+  .rp h1 { font-size:20pt; margin:0 0 2px; font-weight:800; }
+  .rp h2 { font-size:13pt; margin:18px 0 8px; font-weight:700; border-bottom:2px solid #30d158; padding-bottom:3px; }
+  .rp h3 { font-size:11pt; margin:12px 0 6px; font-weight:700; }
+  .rp .sub { color:#555; font-size:9.5pt; margin-bottom:10px; }
+  .rp table { width:100%; border-collapse:collapse; font-size:9.5pt; }
+  .rp th, .rp td { border-bottom:1px solid #ddd; padding:4px 6px; text-align:left; vertical-align:top; }
+  .rp th { background:#f2f2f7; font-weight:700; }
+  .rp tr, .rp svg, .rp .kpi { break-inside:avoid; }
+  .rp .kpis { display:flex; gap:8px; margin:6px 0 10px; flex-wrap:wrap; }
+  .rp .kpi { flex:1; min-width:90px; border:1px solid #ddd; border-radius:8px; padding:6px 8px; font-size:8.5pt; color:#555; }
+  .rp .kpi b { display:block; font-size:14pt; color:#111; }
+  .rp .foot { margin-top:18px; font-size:8.5pt; color:#777; border-top:1px solid #ddd; padding-top:6px; }
+  @media print {
+    html, body { background:#fff !important; color:#000 !important; }
+    #root { display:none !important; }
+    #print-root { display:block !important; }
+    * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    @page { size:A4; margin:14mm; }
+  }
 </style>
 </head>
 <body>
@@ -51,6 +74,7 @@
     <div id="splash-msg" style="color:#8e8e93;font-size:14px">Caricamento…</div>
   </div>
 </div>
+<div id="print-root"></div>
 <script>
   (function () {
     function show(msg) {
@@ -85,7 +109,7 @@ const { useState, useEffect, useRef, useMemo } = React;
 /* ============================================================
    COSTANTI & UTILITÀ
    ============================================================ */
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.3.0';
 const LS_KEY = 'fitform_v1';
 const LS_PHOTOS = 'fitform_v1_photos';
 
@@ -132,7 +156,9 @@ const SEED_FOODS = [
   { id: 'f18', name: 'Lenticchie secche', kcal: 352, p: 25, c: 60, f: 1.1 },
   { id: 'f19', name: 'Whey protein', kcal: 380, p: 78, c: 7, f: 5 },
   { id: 'f20', name: 'Parmigiano Reggiano', kcal: 392, p: 33, c: 0, f: 28 },
-  { id: 'f21', name: 'Milk Pro (bottiglia da 350 g)', kcal: 62, p: 10, c: 4.7, f: 0.4 },
+  { id: 'f21', name: 'Milk PRO Drink (bottiglia da 350 g)', kcal: 63, p: 10, c: 4.7, f: 0.3 },
+  { id: 'f22', name: 'Milk PRO Pudding/Mousse (vasetto da 200 g)', kcal: 62.5, p: 10, c: 4.5, f: 0.4 },
+  { id: 'f23', name: 'Milk PRO Fiocchi di latte (200 g)', kcal: 67, p: 11.9, c: 2.8, f: 0.9 },
 ];
 
 const POSTURE_WARMUP = [
@@ -151,12 +177,13 @@ const EX_LIBRARY = [
   'Plank', 'Side plank', 'Dead bug', 'Bird-dog', 'Hollow hold', 'Crunch inverso', 'Mountain climber',
   'Burpee', 'Jumping jack', 'Calf raise', 'Wall sit',
   'Jump squat', 'Push-up declinati', 'Plank in retroversione', 'Glute bridge isometrico', 'Single-leg glute bridge', 'Affondi alternati camminati',
+  'Trazioni alla sbarra', 'Chin-up (presa inversa)', 'Dip alle parallele', 'Push-up su maniglie basse', 'Leg/Knee raises al castello',
 ];
 
 const PRESETS = {
-  'Lunedì · Corpo Libero A': [['Push-up', 4], ['Inverted row', 4], ['Pike push-up', 3], ['Dip su sedia', 3], ['Plank in retroversione', 3]],
+  'Lunedì · Power Tower A': [['Trazioni alla sbarra', 4], ['Dip alle parallele', 4], ['Push-up su maniglie basse', 3], ['Pike push-up', 3], ['Leg/Knee raises al castello', 3], ['Plank in retroversione', 3]],
   'Martedì · Circuito core anti-tilt': [['Dead bug', 3], ['Glute bridge isometrico', 3], ['Side plank', 3]],
-  'Giovedì · Corpo Libero B': [['Squat a corpo libero', 4], ['Affondi alternati camminati', 3], ['Push-up declinati', 3], ['Single-leg glute bridge', 3], ['Calf raise', 3]],
+  'Giovedì · Power Tower B': [['Squat / Jump squat', 4], ['Affondi alternati camminati', 3], ['Chin-up (presa inversa)', 3], ['Push-up declinati', 3], ['Single-leg glute bridge', 3], ['Calf raise', 3]],
 };
 
 const RUN_TYPES = ['Zona 2', 'Fartlek', 'Intervalli', 'Corsa lenta / recupero', 'Lungo', 'Test / Gara'];
@@ -182,11 +209,12 @@ function loadState() {
     const sp = saved.profile || {};
     if (sp.age === 30 && sp.weight === 75 && sp.activeBase === 300 && !(saved.weights || []).length && !Object.keys(saved.meals || {}).length && !(saved.workouts || []).length) return DEFAULT_STATE;
     const merged = { ...DEFAULT_STATE, ...saved, profile: { ...DEFAULT_STATE.profile, ...(saved.profile || {}) } };
-    // Migrazione: aggiunge una sola volta "Milk Pro" al database cibo (v1.1.1)
+    // Migrazione (v1.2.0): aggiorna/aggiunge i prodotti Milk PRO nel database cibo, una sola volta
     const mig = merged.migrations || [];
-    if (!mig.includes('milkpro')) {
-      if (!merged.foods.some(f => f.id === 'f21')) merged.foods = [...merged.foods, SEED_FOODS.find(f => f.id === 'f21')];
-      merged.migrations = [...mig, 'milkpro'];
+    if (!mig.includes('milkpro2')) {
+      const ids = ['f21', 'f22', 'f23'];
+      merged.foods = [...merged.foods.filter(f => !ids.includes(f.id)), ...SEED_FOODS.filter(f => ids.includes(f.id))];
+      merged.migrations = [...mig, 'milkpro2'];
     }
     return merged;
   } catch (e) { return DEFAULT_STATE; }
@@ -884,6 +912,195 @@ function Workout({ s, up, today, curWeight, intent, clearIntent }) {
 /* ============================================================
    PROGRESSI
    ============================================================ */
+/* ---------- REPORT PDF (stampa / salva come PDF) ---------- */
+const dmy = d => d.split('-').reverse().join('/');
+const movAvg = sorted => sorted.map(w => {
+  const from = addDays(w.date, -6);
+  const win = sorted.filter(x => x.date >= from && x.date <= w.date);
+  return { ...w, avg: r1(win.reduce((a, x) => a + x.kg, 0) / win.length) };
+});
+const paceStr = (dur, dist) => { if (!dist) return '—'; const p = dur / dist; return `${Math.floor(p)}:${pad(Math.round((p % 1) * 60) % 60)} /km`; };
+
+function WeightSvg({ pts }) {
+  if (pts.length < 2) return null;
+  const w = 680, h = 210, l = 44, r = 12, t = 12, b = 26;
+  const vals = pts.flatMap(p => [p.kg, p.avg]);
+  let mn = Math.min(...vals), mx = Math.max(...vals);
+  const pdg = (mx - mn) * 0.15 || 0.5; mn -= pdg; mx += pdg;
+  const X = i => l + (w - l - r) * (i / (pts.length - 1));
+  const Y = v => t + (h - t - b) * (1 - (v - mn) / (mx - mn));
+  const line = k => pts.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(p[k]).toFixed(1)}`).join(' ');
+  const ticks = Array.from({ length: 5 }, (_, i) => mn + (mx - mn) * i / 4);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto' }}>
+      {ticks.map((v, i) => (
+        <g key={i}>
+          <line x1={l} x2={w - r} y1={Y(v)} y2={Y(v)} stroke="#e5e5ea" strokeWidth="1" />
+          <text x={l - 6} y={Y(v) + 3} fontSize="10" textAnchor="end" fill="#555">{v.toFixed(1)}</text>
+        </g>
+      ))}
+      <path d={line('kg')} fill="none" stroke="#0a84ff" strokeWidth="1.5" opacity="0.6" />
+      {pts.map((p, i) => <circle key={i} cx={X(i)} cy={Y(p.kg)} r="2.5" fill="#0a84ff" />)}
+      <path d={line('avg')} fill="none" stroke="#30d158" strokeWidth="3" />
+      <text x={l} y={h - 8} fontSize="10" fill="#555">{dmy(pts[0].date)}</text>
+      <text x={w - r} y={h - 8} fontSize="10" textAnchor="end" fill="#555">{dmy(pts[pts.length - 1].date)}</text>
+      <circle cx={w - 150} cy={h - 11} r="3" fill="#0a84ff" /><text x={w - 143} y={h - 8} fontSize="10" fill="#555">Peso</text>
+      <rect x={w - 100} y={h - 13} width="12" height="4" fill="#30d158" /><text x={w - 84} y={h - 8} fontSize="10" fill="#555">Media 7gg</text>
+    </svg>
+  );
+}
+
+function ReportDoc({ s, targets, curWeight, opts }) {
+  const from = opts.range ? addDays(todayStr(), -opts.range) : '0000-00-00';
+  const allW = [...s.weights].sort((a, b) => a.date.localeCompare(b.date));
+  const W = movAvg(allW).filter(w => w.date >= from);
+  const comp = s.comp.filter(c => c.date >= from).sort((a, b) => a.date.localeCompare(b.date));
+  const wk = s.workouts.filter(w => w.date >= from).sort((a, b) => a.date.localeCompare(b.date));
+  const bw = wk.filter(w => w.type === 'bw');
+  const runs = wk.filter(w => w.type === 'run');
+
+  const exMap = {};
+  bw.forEach(w => w.exercises.forEach(e => {
+    const reps = e.sets.map(x => num(x.reps));
+    (exMap[e.name] = exMap[e.name] || []).push({ date: w.date, reps, total: reps.reduce((a, b) => a + b, 0), best: Math.max(0, ...reps) });
+  }));
+  const exRows = Object.keys(exMap).map(name => {
+    const l = exMap[name];
+    return { name, n: l.length, first: l[0], last: l[l.length - 1], best: Math.max(...l.map(x => x.best)) };
+  }).sort((a, b) => b.n - a.n);
+
+  const km = runs.reduce((a, r) => a + (r.distance || 0), 0);
+  const runMin = runs.reduce((a, r) => a + r.duration, 0);
+  const totMin = wk.reduce((a, w) => a + w.duration, 0);
+  const kcalTot = wk.reduce((a, w) => a + (w.kcal || 0), 0);
+  const fW = W[0], lW = W[W.length - 1];
+  const periodLabel = opts.range ? `Ultimi ${opts.range} giorni` : 'Tutto lo storico';
+  const repsStr = e => e.sets.map(x => x.reps || '–').join('/');
+
+  return (
+    <div className="rp">
+      <h1>Report progressi</h1>
+      <div className="sub">FitForm · {periodLabel} · generato il {dmy(todayStr())} · {s.profile.sex === 'M' ? 'Uomo' : 'Donna'}, {s.profile.age} anni, {s.profile.height} cm, {curWeight} kg · target {targets.kcal} kcal (P {targets.prot} g · C {targets.carbs} g · G {targets.fat} g)</div>
+
+      {opts.weight && (
+        <>
+          <h2>Peso e composizione corporea</h2>
+          {W.length === 0 ? <p>Nessuna pesata nel periodo.</p> : (
+            <>
+              <div className="kpis">
+                <div className="kpi">Peso iniziale<b>{fW.kg} kg</b>{dmy(fW.date)}</div>
+                <div className="kpi">Peso attuale<b>{lW.kg} kg</b>{dmy(lW.date)}</div>
+                <div className="kpi">Variazione<b>{(lW.kg - fW.kg > 0 ? '+' : '') + r1(lW.kg - fW.kg)} kg</b>nel periodo</div>
+                <div className="kpi">Media 7 giorni<b>{lW.avg} kg</b>ultima</div>
+                <div className="kpi">Min / Max<b>{Math.min(...W.map(x => x.kg))} / {Math.max(...W.map(x => x.kg))}</b>kg</div>
+              </div>
+              <WeightSvg pts={W} />
+              <h3>Pesate</h3>
+              <table>
+                <thead><tr><th>Data</th><th>Peso (kg)</th><th>Media 7gg (kg)</th></tr></thead>
+                <tbody>{[...W].reverse().map(w => <tr key={w.id}><td>{dmy(w.date)}</td><td>{w.kg}</td><td>{w.avg}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+          {comp.length > 0 && (
+            <>
+              <h3>Composizione corporea</h3>
+              <table>
+                <thead><tr><th>Data</th><th>Massa grassa (%)</th><th>Massa grassa (kg)</th><th>Massa magra (kg)</th></tr></thead>
+                <tbody>{[...comp].reverse().map(c => <tr key={c.id}><td>{dmy(c.date)}</td><td>{c.fat}</td><td>{r1(c.lean * c.fat / (100 - c.fat))}</td><td>{c.lean}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
+        </>
+      )}
+
+      {opts.workouts && (
+        <>
+          <h2>Allenamenti</h2>
+          {wk.length === 0 ? <p>Nessun allenamento registrato nel periodo.</p> : (
+            <>
+              <div className="kpis">
+                <div className="kpi">Sessioni totali<b>{wk.length}</b>{bw.length} forza · {runs.length} corsa</div>
+                <div className="kpi">Tempo totale<b>{Math.floor(totMin / 60)} h {totMin % 60} min</b>allenamento</div>
+                <div className="kpi">Corsa<b>{r1(km)} km</b>{runMin} min · {paceStr(runMin, km)}</div>
+                <div className="kpi">Energia stimata<b>{r0(kcalTot)} kcal</b>dagli allenamenti</div>
+              </div>
+
+              {exRows.length > 0 && (
+                <>
+                  <h3>Progressione per esercizio (ripetizioni totali per sessione)</h3>
+                  <table>
+                    <thead><tr><th>Esercizio</th><th>Sessioni</th><th>Prima sessione</th><th>Ultima sessione</th><th>Variaz.</th><th>Miglior serie</th></tr></thead>
+                    <tbody>{exRows.map(x => (
+                      <tr key={x.name}>
+                        <td>{x.name}</td><td>{x.n}</td>
+                        <td>{x.first.total} ({x.first.reps.join('/')})</td>
+                        <td>{x.last.total} ({x.last.reps.join('/')})</td>
+                        <td>{x.n > 1 ? (x.last.total - x.first.total > 0 ? '+' : '') + (x.last.total - x.first.total) : '—'}</td>
+                        <td>{x.best || '—'}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </>
+              )}
+
+              {runs.length > 0 && (
+                <>
+                  <h3>Corse</h3>
+                  <table>
+                    <thead><tr><th>Data</th><th>Tipologia</th><th>Durata</th><th>Distanza</th><th>Passo medio</th></tr></thead>
+                    <tbody>{[...runs].reverse().map(r => <tr key={r.id}><td>{dmy(r.date)}</td><td>{r.runType}</td><td>{r.duration} min</td><td>{r.distance ? r.distance + ' km' : '—'}</td><td>{paceStr(r.duration, r.distance)}</td></tr>)}</tbody>
+                  </table>
+                </>
+              )}
+
+              {bw.length > 0 && (
+                <>
+                  <h3>Registro sessioni di forza</h3>
+                  <table>
+                    <thead><tr><th>Data</th><th>Sessione</th><th>Esercizi (ripetizioni per serie)</th></tr></thead>
+                    <tbody>{[...bw].reverse().map(w => (
+                      <tr key={w.id}>
+                        <td>{dmy(w.date)}</td>
+                        <td>{w.name}<br /><span style={{ color: '#777' }}>{w.duration} min · ~{w.kcal} kcal</span></td>
+                        <td>{w.exercises.map(e => `${e.name}: ${repsStr(e)}`).join(' · ')}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      <div className="foot">Generato da FitForm v{APP_VERSION}. Le calorie degli allenamenti sono stime indicative. Il peso va valutato come trend (media settimanale), non sul singolo dato.</div>
+    </div>
+  );
+}
+
+function ExportModal({ onClose, onCreate }) {
+  const [range, setRange] = useState(90);
+  const [weight, setWeight] = useState(true);
+  const [workouts, setWorkouts] = useState(true);
+  return (
+    <Modal title="Esporta report PDF" onClose={onClose}>
+      <Field label="Periodo">
+        <select value={range} onChange={e => setRange(Number(e.target.value))}>
+          <option value={30}>Ultimi 30 giorni</option>
+          <option value={90}>Ultimi 90 giorni</option>
+          <option value={180}>Ultimi 6 mesi</option>
+          <option value={0}>Tutto lo storico</option>
+        </select>
+      </Field>
+      <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={weight} onChange={e => setWeight(e.target.checked)} /> Peso e composizione corporea</label>
+      <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={workouts} onChange={e => setWorkouts(e.target.checked)} /> Allenamenti ed esercizi</label>
+      <p className="text-xs text-ios-mute">Si apre la schermata di stampa del dispositivo. Su iPhone: pizzica con due dita l'anteprima per ingrandirla, poi tocca Condividi → Salva su File. Su computer scegli «Salva come PDF» come stampante.</p>
+      <Btn className="w-full" onClick={() => onCreate({ range, weight, workouts })} disabled={!weight && !workouts}><I n="file-pdf" /> Crea PDF</Btn>
+    </Modal>
+  );
+}
+
 function Progress({ s, up, targets, curWeight, photos, setPhotos, intent, clearIntent }) {
   const [wModal, setWModal] = useState(false);
   const [range, setRange] = useState(90);
@@ -893,6 +1110,13 @@ function Progress({ s, up, targets, curWeight, photos, setPhotos, intent, clearI
   const [phErr, setPhErr] = useState('');
   const [cmp, setCmp] = useState([]);
   const [showCmp, setShowCmp] = useState(false);
+  const [exp, setExp] = useState(false);
+  const [rep, setRep] = useState(null);
+  useEffect(() => {
+    if (!rep) return;
+    const t = setTimeout(() => window.print(), 500);
+    return () => clearTimeout(t);
+  }, [rep && rep.id]);
   const fileRef = useRef(null);
 
   useEffect(() => { if (intent === 'weight') { setWModal(true); clearIntent(); } }, [intent]);
@@ -973,7 +1197,10 @@ function Progress({ s, up, targets, curWeight, photos, setPhotos, intent, clearI
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl font-extrabold tracking-tight">Progressi</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-extrabold tracking-tight">Progressi</h1>
+        <button onClick={() => setExp(true)} className="press rounded-full bg-ios-card px-4 py-2 text-sm font-semibold text-ios-blue"><I n="file-pdf" /> PDF</button>
+      </div>
 
       <Card>
         <Title right={<button onClick={() => setWModal(true)} className="press rounded-full bg-ios-blue px-3 py-1 text-xs font-bold"><I n="plus" /> Peso</button>}>Peso corporeo</Title>
@@ -1043,6 +1270,8 @@ function Progress({ s, up, targets, curWeight, photos, setPhotos, intent, clearI
         )}
       </Card>
 
+      {exp && <ExportModal onClose={() => setExp(false)} onCreate={o => { setExp(false); setRep({ ...o, id: Date.now() }); }} />}
+      {rep && ReactDOM.createPortal(<ReportDoc s={s} targets={targets} curWeight={curWeight} opts={rep} />, document.getElementById('print-root'))}
       {wModal && <WeightModal s={s} up={up} onClose={() => setWModal(false)} />}
       {cModal && (
         <Modal title="Nuova misurazione" onClose={() => setCModal(false)}>
