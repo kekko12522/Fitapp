@@ -85,7 +85,7 @@ const { useState, useEffect, useRef, useMemo } = React;
 /* ============================================================
    COSTANTI & UTILITÀ
    ============================================================ */
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.1.1';
 const LS_KEY = 'fitform_v1';
 const LS_PHOTOS = 'fitform_v1_photos';
 
@@ -132,6 +132,7 @@ const SEED_FOODS = [
   { id: 'f18', name: 'Lenticchie secche', kcal: 352, p: 25, c: 60, f: 1.1 },
   { id: 'f19', name: 'Whey protein', kcal: 380, p: 78, c: 7, f: 5 },
   { id: 'f20', name: 'Parmigiano Reggiano', kcal: 392, p: 33, c: 0, f: 28 },
+  { id: 'f21', name: 'Milk Pro (bottiglia da 350 g)', kcal: 62, p: 10, c: 4.7, f: 0.4 },
 ];
 
 const POSTURE_WARMUP = [
@@ -149,12 +150,13 @@ const EX_LIBRARY = [
   'Push-up', 'Push-up inclinati', 'Pike push-up', 'Dip su sedia', 'Inverted row', 'Superman',
   'Plank', 'Side plank', 'Dead bug', 'Bird-dog', 'Hollow hold', 'Crunch inverso', 'Mountain climber',
   'Burpee', 'Jumping jack', 'Calf raise', 'Wall sit',
+  'Jump squat', 'Push-up declinati', 'Plank in retroversione', 'Glute bridge isometrico', 'Single-leg glute bridge', 'Affondi alternati camminati',
 ];
 
 const PRESETS = {
-  'Full Body A': ['Squat a corpo libero', 'Push-up', 'Glute bridge', 'Inverted row', 'Dead bug'],
-  'Full Body B': ['Affondi alternati', 'Pike push-up', 'Hip thrust monopodalico', 'Superman', 'Plank'],
-  'Gambe + Core posturale': ['Split squat bulgaro', 'Glute bridge', 'Bird-dog', 'Side plank', 'Dead bug'],
+  'Lunedì · Corpo Libero A': [['Push-up', 4], ['Inverted row', 4], ['Pike push-up', 3], ['Dip su sedia', 3], ['Plank in retroversione', 3]],
+  'Martedì · Circuito core anti-tilt': [['Dead bug', 3], ['Glute bridge isometrico', 3], ['Side plank', 3]],
+  'Giovedì · Corpo Libero B': [['Squat a corpo libero', 4], ['Affondi alternati camminati', 3], ['Push-up declinati', 3], ['Single-leg glute bridge', 3], ['Calf raise', 3]],
 };
 
 const RUN_TYPES = ['Zona 2', 'Fartlek', 'Intervalli', 'Corsa lenta / recupero', 'Lungo', 'Test / Gara'];
@@ -163,9 +165,12 @@ const RUN_TYPES = ['Zona 2', 'Fartlek', 'Intervalli', 'Corsa lenta / recupero', 
    STATO & PERSISTENZA (localStorage)
    ============================================================ */
 const DEFAULT_STATE = {
-  profile: { sex: 'M', age: 30, height: 175, weight: 75, activeBase: 300, adjust: -10, protKg: 2.0, fatKg: 0.8, waterMl: 2500, stepsGoal: 10000, rest: 60 },
+  profile: { sex: 'M', age: 24, height: 175, weight: 71.6, activeBase: 361, adjust: -10, protKg: 2.0, fatKg: 0.8, waterMl: 2500, stepsGoal: 10000, rest: 60 },
   foods: SEED_FOODS,
-  meals: {}, water: {}, activity: {}, workouts: [], warmup: {}, weights: [], comp: [], draft: null,
+  meals: {}, water: {}, activity: {}, workouts: [], warmup: {},
+  weights: [{ id: 'seed-w1', date: '2026-10-27', kg: 71.6 }],
+  comp: [{ id: 'seed-c1', date: '2026-10-27', fat: 20.8, lean: 56.7 }],
+  draft: null,
 };
 
 function loadState() {
@@ -173,7 +178,17 @@ function loadState() {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return DEFAULT_STATE;
     const saved = JSON.parse(raw);
-    return { ...DEFAULT_STATE, ...saved, profile: { ...DEFAULT_STATE.profile, ...(saved.profile || {}) } };
+    // Dati mai modificati della v1.0.x (profilo di esempio): sostituiscili con i dati personali
+    const sp = saved.profile || {};
+    if (sp.age === 30 && sp.weight === 75 && sp.activeBase === 300 && !(saved.weights || []).length && !Object.keys(saved.meals || {}).length && !(saved.workouts || []).length) return DEFAULT_STATE;
+    const merged = { ...DEFAULT_STATE, ...saved, profile: { ...DEFAULT_STATE.profile, ...(saved.profile || {}) } };
+    // Migrazione: aggiunge una sola volta "Milk Pro" al database cibo (v1.1.1)
+    const mig = merged.migrations || [];
+    if (!mig.includes('milkpro')) {
+      if (!merged.foods.some(f => f.id === 'f21')) merged.foods = [...merged.foods, SEED_FOODS.find(f => f.id === 'f21')];
+      merged.migrations = [...mig, 'milkpro'];
+    }
+    return merged;
   } catch (e) { return DEFAULT_STATE; }
 }
 function loadPhotos() {
@@ -701,7 +716,7 @@ function Workout({ s, up, today, curWeight, intent, clearIntent }) {
   const toggleWarm = id => up(p => { const cur = p.warmup[today] || []; return { warmup: { ...p.warmup, [today]: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] } }; });
 
   const setDraft = fn => up(p => ({ draft: fn(p.draft) }));
-  const startBw = (name, exs) => up(() => ({ draft: { id: uid(), name, startedAt: Date.now(), exercises: (exs || []).map(n => ({ id: uid(), name: n, sets: [{ id: uid(), reps: '', done: false }, { id: uid(), reps: '', done: false }, { id: uid(), reps: '', done: false }] })) } }));
+  const startBw = (name, exs) => up(() => ({ draft: { id: uid(), name, startedAt: Date.now(), exercises: (exs || []).map(([n, k]) => ({ id: uid(), name: n, sets: Array.from({ length: k }, () => ({ id: uid(), reps: '', done: false })) })) } }));
   const addEx = name => { if (!name.trim()) return; setDraft(d => ({ ...d, exercises: [...d.exercises, { id: uid(), name: name.trim(), sets: [{ id: uid(), reps: '', done: false }, { id: uid(), reps: '', done: false }, { id: uid(), reps: '', done: false }] }] })); setPicker(false); setCustomEx(''); };
   const updEx = (eid, fn) => setDraft(d => ({ ...d, exercises: d.exercises.map(e => e.id === eid ? fn(e) : e) }));
   const toggleSet = (eid, sid) => {
@@ -760,7 +775,7 @@ function Workout({ s, up, today, curWeight, intent, clearIntent }) {
             <div className="space-y-2">
               {Object.keys(PRESETS).map(k => (
                 <button key={k} onClick={() => startBw(k, PRESETS[k])} className="press w-full flex items-center justify-between bg-ios-card2 rounded-2xl p-3.5 text-left">
-                  <span><span className="block font-semibold">{k}</span><span className="block text-[11px] text-ios-mute">{PRESETS[k].join(' · ')}</span></span>
+                  <span><span className="block font-semibold">{k}</span><span className="block text-[11px] text-ios-mute">{PRESETS[k].map(([n, c]) => `${n} ${c}×`).join(' · ')}</span></span>
                   <I n="play" c="text-ios-green" />
                 </button>
               ))}
