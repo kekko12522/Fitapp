@@ -85,7 +85,7 @@ const { useState, useEffect, useRef, useMemo } = React;
 /* ============================================================
    COSTANTI & UTILITÀ
    ============================================================ */
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 const LS_KEY = 'fitform_v1';
 const LS_PHOTOS = 'fitform_v1_photos';
 
@@ -1219,7 +1219,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-black">
-      <div className="max-w-lg mx-auto px-4 safe-top pt-5 pb-40">
+      <div className="max-w-lg mx-auto px-4 pb-40" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 20px)' }}>
         {saveErr && <div className="mb-3 rounded-xl bg-ios-red/15 text-ios-red text-xs p-3">Impossibile salvare nel browser (spazio pieno o modalità privata). Esporta un backup dal Profilo.</div>}
         {tab === 'home' && <Home s={s} up={up} targets={targets} today={today} curWeight={curWeight} go={go} />}
         {tab === 'nutrition' && <Nutrition s={s} up={up} targets={targets} intent={intent} clearIntent={clearIntent} />}
